@@ -5,6 +5,7 @@ import os
 from dotenv import load_dotenv
 import requests
 import json
+from bs4 import BeautifulSoup
 
 load_dotenv()
 
@@ -30,6 +31,24 @@ def web_search(query: str):
     response = requests.post(url, json=data, headers=headers)
     return response.json()
 
+def read_page(url: str):
+    try:
+        response = requests.get(url, timeout=10)
+        if response.status_code != 200:
+            return f"Error: HTTP {response.status_code}"
+        soup = BeautifulSoup(response.text, 'html.parser')
+        # Remove scripts, styles, and other unwanted tags
+        for tag in soup(["script", "style", "nav", "header", "footer", "aside"]):
+            tag.decompose()
+        text = soup.get_text()
+        # Clean up whitespace
+        lines = (line.strip() for line in text.splitlines())
+        chunks = (phrase.strip() for line in lines for phrase in line.split("  "))
+        text = '\n'.join(chunk for chunk in chunks if chunk)
+        return text
+    except Exception as e:
+        return f"Error fetching or parsing page: {str(e)}"
+
 web_search_schema = {
     "type": "function",
     "function": {
@@ -48,7 +67,25 @@ web_search_schema = {
     }
 }
 
-tools = [web_search_schema]
+read_page_schema = {
+    "type": "function",
+    "function": {
+        "name": "read_page",
+        "description": "Read the main text content from a web page URL",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "url": {
+                    "type": "string",
+                    "description": "The URL of the web page to read"
+                }
+            },
+            "required": ["url"]
+        }
+    }
+}
+
+tools = [web_search_schema, read_page_schema]
 
 @app.get("/hello")
 def hello(name: str):
@@ -87,6 +124,15 @@ def chat(request: ChatRequest):
                 args = json.loads(tool_call.function.arguments)
                 result = web_search(args["query"])
                 print(f"[System] Tool Output: {result}")
+                messages.append({
+                    "role": "tool",
+                    "tool_call_id": tool_call.id,
+                    "content": json.dumps(result)
+                })
+            elif tool_call.function.name == "read_page":
+                args = json.loads(tool_call.function.arguments)
+                result = read_page(args["url"])
+                print(f"[System] Tool Output: {result[:500]}...")  # Truncate for logging
                 messages.append({
                     "role": "tool",
                     "tool_call_id": tool_call.id,
