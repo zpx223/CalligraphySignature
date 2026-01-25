@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chat Application</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            height: 100vh;
+        }
+        .sidebar {
+            width: 250px;
+            background-color: #f4f4f4;
+            padding: 10px;
+            border-right: 1px solid #ddd;
+            overflow-y: auto;
+        }
+        .sidebar h2 {
+            margin-top: 0;
+        }
+        .chat-list {
+            list-style: none;
+            padding: 0;
+        }
+        .chat-list li {
+            padding: 10px;
+            cursor: pointer;
+            border-bottom: 1px solid #ddd;
+        }
+        .chat-list li:hover {
+            background-color: #e9e9e9;
+        }
+        .chat-area {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+        }
+        .messages {
+            flex: 1;
+            padding: 10px;
+            overflow-y: auto;
+            border-bottom: 1px solid #ddd;
+        }
+        .message {
+            margin-bottom: 10px;
+        }
+        .user {
+            text-align: right;
+        }
+        .assistant {
+            text-align: left;
+        }
+        .input-area {
+            display: flex;
+            padding: 10px;
+        }
+        .input-area input {
+            flex: 1;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        .input-area button {
+            padding: 10px 20px;
+            margin-left: 10px;
+            background-color: #007bff;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        .thinking {
+            display: none;
+            text-align: center;
+            padding: 10px;
+        }
+        .spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #3498db;
+            border-radius: 50%;
+            width: 30px;
+            height: 30px;
+            animation: spin 2s linear infinite;
+            display: inline-block;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+    <div class="sidebar">
+        <h2>Chat History</h2>
+        <button id="new-chat">New Chat</button>
+        <ul class="chat-list" id="chat-list"></ul>
+    </div>
+    <div class="chat-area">
+        <div class="messages" id="messages"></div>
+        <div class="thinking" id="thinking">
+            <div class="spinner"></div>
+            Thinking...
+        </div>
+        <div class="input-area">
+            <input type="text" id="message-input" placeholder="Type your message...">
+            <button id="send-button">Send</button>
+        </div>
+    </div>
+
+    <script>
+        const chatList = document.getElementById('chat-list');
+        const messagesDiv = document.getElementById('messages');
+        const messageInput = document.getElementById('message-input');
+        const sendButton = document.getElementById('send-button');
+        const thinkingDiv = document.getElementById('thinking');
+        const newChatButton = document.getElementById('new-chat');
+
+        let chats = JSON.parse(localStorage.getItem('chats')) || [];
+        let currentChatId = null;
+
+        function saveChats() {
+            localStorage.setItem('chats', JSON.stringify(chats));
+        }
+
+        function renderChatList() {
+            chatList.innerHTML = '';
+            chats.forEach(chat => {
+                const li = document.createElement('li');
+                li.textContent = chat.title || `Chat ${chat.id}`;
+                li.onclick = () => loadChat(chat.id);
+                chatList.appendChild(li);
+            });
+        }
+
+        function loadChat(chatId) {
+            currentChatId = chatId;
+            const chat = chats.find(c => c.id === chatId);
+            messagesDiv.innerHTML = '';
+            chat.messages.forEach(msg => {
+                addMessage(msg.role, msg.content);
+            });
+        }
+
+        function addMessage(role, content) {
+            const div = document.createElement('div');
+            div.className = `message ${role}`;
+            div.textContent = content;
+            messagesDiv.appendChild(div);
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+        }
+
+        function createNewChat() {
+            const chatId = Date.now().toString();
+            const chat = { id: chatId, messages: [], title: `Chat ${chats.length + 1}` };
+            chats.push(chat);
+            saveChats();
+            renderChatList();
+            loadChat(chatId);
+        }
+
+        async function sendMessage() {
+            const message = messageInput.value.trim();
+            if (!message || !currentChatId) return;
+
+            addMessage('user', message);
+            const chat = chats.find(c => c.id === currentChatId);
+            chat.messages.push({ role: 'user', content: message });
+            saveChats();
+
+            messageInput.value = '';
+            thinkingDiv.style.display = 'block';
+
+            try {
+                const response = await fetch('/chat', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ user_message: message }),
+                });
+                const data = await response.json();
+                addMessage('assistant', data.response);
+                chat.messages.push({ role: 'assistant', content: data.response });
+                saveChats();
+            } catch (error) {
+                addMessage('assistant', 'Error: ' + error.message);
+            } finally {
+                thinkingDiv.style.display = 'none';
+            }
+        }
+
+        newChatButton.onclick = createNewChat;
+        sendButton.onclick = sendMessage;
+        messageInput.onkeypress = (e) => {
+            if (e.key === 'Enter') sendMessage();
+        };
+
+        // Initialize
+        if (chats.length === 0) {
+            createNewChat();
+        } else {
+            renderChatList();
+            loadChat(chats[chats.length - 1].id);
+        }
+    </script>
+</body>
+</html>
