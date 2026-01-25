@@ -3,6 +3,8 @@ from pydantic import BaseModel
 from openai import OpenAI
 import os
 from dotenv import load_dotenv
+import requests
+import json
 
 load_dotenv()
 
@@ -12,9 +14,41 @@ class ChatRequest(BaseModel):
     user_message: str
 
 client = OpenAI(
-    api_key=os.getenv("OPENAI_API_KEY"),
+    api_key=os.getenv("SUPER_MIND_API_KEY"),
     base_url="https://space.ai-builders.com/backend/v1"
 )
+
+def web_search(query: str):
+    url = "https://space.ai-builders.com/backend/v1/search/"
+    headers = {
+        "Authorization": f"Bearer {os.getenv('SUPER_MIND_API_KEY')}"
+    }
+    data = {
+        "keywords": [query],
+        "max_results": 3
+    }
+    response = requests.post(url, json=data, headers=headers)
+    return response.json()
+
+web_search_schema = {
+    "type": "function",
+    "function": {
+        "name": "web_search",
+        "description": "Search the web for information using keywords",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "query": {
+                    "type": "string",
+                    "description": "The search query string"
+                }
+            },
+            "required": ["query"]
+        }
+    }
+}
+
+tools = [web_search_schema]
 
 @app.get("/hello")
 def hello(name: str):
@@ -31,11 +65,33 @@ def hello(name: str):
 
 @app.post("/chat")
 def chat(request: ChatRequest):
-    response = client.chat.completions.create(
-        model="gpt-5",
-        messages=[
-            {"role": "user", "content": request.user_message}
-        ]
-    )
-    return {"response": response.choices[0].message.content}
+    messages = [{"role": "user", "content": request.user_message}]
+    max_turns = 3
+    
+    for turn in range(max_turns):
+        response = client.chat.completions.create(
+            model="gpt-5",
+            messages=messages,
+            tools=tools
+        )
+        message = response.choices[0].message
+        messages.append(message)
+        
+        if not message.tool_calls:
+            print(f"[Agent] Final Answer: {message.content}")
+            break
+        
+        for tool_call in message.tool_calls:
+            print(f"[Agent] Decided to call tool: {tool_call.function.name}")
+            if tool_call.function.name == "web_search":
+                args = json.loads(tool_call.function.arguments)
+                result = web_search(args["query"])
+                print(f"[System] Tool Output: {result}")
+                messages.append({
+                    "role": "tool",
+                    "tool_call_id": tool_call.id,
+                    "content": json.dumps(result)
+                })
+    
+    return {"response": message.content}
 
