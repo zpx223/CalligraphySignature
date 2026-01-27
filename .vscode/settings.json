@@ -5,6 +5,18 @@
     ],
     "cursorpyright.analysis.extraPaths": [
         "venv/lib/python3.9/site-packages"
-    ]
+    ],
+    "mcpServers": {
+        "ai-builders-coach": {
+            "command": "npx",
+            "args": [
+                "-y",
+                "@aibuilders/mcp-coach-server"
+            ],
+            "env": {
+                "AI_BUILDER_TOKEN": "sk_8b36c6ac_90abd21a8d8d2ae41acb17709ca2f6e1c4c3"
+            }
+        }
+    }
 }
 
