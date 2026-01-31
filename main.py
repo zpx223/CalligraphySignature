@@ -21,6 +21,24 @@ def read_root():
 
 class ChatRequest(BaseModel):
     user_message: str
+    model: str = "gpt-5"
+
+# Model config: id -> (api_model_id, base_url, api_key_env, display_name)
+MODELS = {
+    "gpt-5": ("gpt-5", "https://space.ai-builders.com/backend/v1", "SUPER_MIND_API_KEY", "ChatGPT (gpt-5)"),
+    "gpt-4": ("gpt-4", "https://space.ai-builders.com/backend/v1", "SUPER_MIND_API_KEY", "ChatGPT (gpt-4)"),
+    "deepseek": ("deepseek-chat", "https://api.deepseek.com/v1", "DEEPSEEK_API_KEY", "DeepSeek"),
+}
+
+def get_client_and_model(model_key: str) -> tuple[OpenAI, str]:
+    if model_key not in MODELS:
+        model_key = "gpt-5"
+    api_model_id, base_url, key_env, _ = MODELS[model_key]
+    api_key = os.getenv(key_env)
+    if not api_key:
+        raise ValueError(f"Missing {key_env} for model {model_key}")
+    client = OpenAI(api_key=api_key, base_url=base_url)
+    return client, api_model_id
 
 client = OpenAI(
     api_key=os.getenv("SUPER_MIND_API_KEY"),
@@ -95,6 +113,18 @@ read_page_schema = {
 
 tools = [web_search_schema, read_page_schema]
 
+@app.get("/models")
+def list_models():
+    """Return available models for the frontend dropdown."""
+    available = []
+    for key, (_, _, key_env, display_name) in MODELS.items():
+        if os.getenv(key_env):
+            available.append({"id": key, "name": display_name})
+    if not available:
+        available = [{"id": "gpt-5", "name": "ChatGPT (gpt-5)"}]
+    return {"models": available}
+
+
 @app.get("/hello")
 def hello(name: str):
     """
@@ -110,12 +140,13 @@ def hello(name: str):
 
 @app.post("/chat")
 def chat(request: ChatRequest):
+    chat_client, model_id = get_client_and_model(request.model)
     messages = [{"role": "user", "content": request.user_message}]
     max_turns = 3
     
     for turn in range(max_turns):
-        response = client.chat.completions.create(
-            model="gpt-5",
+        response = chat_client.chat.completions.create(
+            model=model_id,
             messages=messages,
             tools=tools
         )
