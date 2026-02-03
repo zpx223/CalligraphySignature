@@ -44,14 +44,16 @@
             white-space: nowrap;
         }
         .chat-list li .delete-chat {
-            opacity: 0.5;
-            padding: 2px 6px;
-            margin-left: 4px;
-            font-size: 12px;
+            flex-shrink: 0;
+            opacity: 0.7;
+            padding: 4px 8px;
+            margin-left: 6px;
+            font-size: 14px;
+            line-height: 1;
             background: #dc3545;
             color: white;
             border: none;
-            border-radius: 3px;
+            border-radius: 4px;
             cursor: pointer;
         }
         .chat-list li .delete-chat:hover {
@@ -187,15 +189,22 @@
                 title.textContent = chat.title || `Chat ${chat.id}`;
                 li.appendChild(title);
                 const delBtn = document.createElement('button');
+                delBtn.type = 'button';
                 delBtn.className = 'delete-chat';
                 delBtn.textContent = '×';
                 delBtn.title = 'Delete chat';
-                delBtn.onclick = (e) => {
+                delBtn.addEventListener('click', (e) => {
+                    e.preventDefault();
                     e.stopPropagation();
                     deleteChat(chat.id);
-                };
+                    return false;
+                });
                 li.appendChild(delBtn);
-                li.onclick = (e) => { if (!e.target.classList.contains('delete-chat')) loadChat(chat.id); };
+                li.addEventListener('click', (e) => {
+                    if (!e.target.classList.contains('delete-chat') && !e.target.closest('.delete-chat')) {
+                        loadChat(chat.id);
+                    }
+                });
                 chatList.appendChild(li);
             });
         }
