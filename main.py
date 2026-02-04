@@ -23,30 +23,42 @@ class ChatRequest(BaseModel):
     user_message: str
     model: str = "gpt-5"
 
-# Model config: id -> (api_model_id, base_url, api_key_env, display_name)
-MODELS = {
-    "gpt-5": ("gpt-5", "https://space.ai-builders.com/backend/v1", "SUPER_MIND_API_KEY", "ChatGPT (gpt-5)"),
-    "gpt-4": ("gpt-4", "https://space.ai-builders.com/backend/v1", "SUPER_MIND_API_KEY", "ChatGPT (gpt-4)"),
-    "deepseek": ("deepseek-chat", "https://api.deepseek.com/v1", "DEEPSEEK_API_KEY", "DeepSeek"),
-}
+AI_BUILDERS_URL = "https://space.ai-builders.com/backend/v1"
+
+# Model IDs that use the images API (from ai-builders /models)
+IMAGE_MODEL_IDS = {"gpt-image-1.5", "gemini-2.5-flash-image"}
+
+def fetch_ai_builders_models() -> list[dict]:
+    """Fetch available models from ai-builders API."""
+    api_key = os.getenv("SUPER_MIND_API_KEY")
+    if not api_key:
+        return []
+    try:
+        headers = {"accept": "application/json"}
+        if api_key:
+            headers["Authorization"] = f"Bearer {api_key}"
+        resp = requests.get(f"{AI_BUILDERS_URL}/models", headers=headers, timeout=10)
+        resp.raise_for_status()
+        data = resp.json()
+        return data.get("data", [])
+    except Exception:
+        return []
 
 def get_client_and_model(model_key: str) -> tuple[OpenAI, str]:
-    if model_key not in MODELS:
-        model_key = "gpt-5"
-    api_model_id, base_url, key_env, _ = MODELS[model_key]
-    api_key = os.getenv(key_env)
+    """Get OpenAI client and model id. All models use ai-builders."""
+    api_key = os.getenv("SUPER_MIND_API_KEY")
     if not api_key:
-        raise ValueError(f"Missing {key_env} for model {model_key}")
-    client = OpenAI(api_key=api_key, base_url=base_url)
-    return client, api_model_id
+        raise ValueError("Missing SUPER_MIND_API_KEY")
+    client = OpenAI(api_key=api_key, base_url=AI_BUILDERS_URL)
+    return client, model_key or "gpt-5"
 
 client = OpenAI(
     api_key=os.getenv("SUPER_MIND_API_KEY"),
-    base_url="https://space.ai-builders.com/backend/v1"
+    base_url=AI_BUILDERS_URL
 )
 
 def web_search(query: str):
-    url = "https://space.ai-builders.com/backend/v1/search/"
+    url = f"{AI_BUILDERS_URL}/search/"
     headers = {
         "Authorization": f"Bearer {os.getenv('SUPER_MIND_API_KEY')}"
     }
@@ -115,13 +127,14 @@ tools = [web_search_schema, read_page_schema]
 
 @app.get("/models")
 def list_models():
-    """Return available models for the frontend dropdown."""
-    available = []
-    for key, (_, _, key_env, display_name) in MODELS.items():
-        if os.getenv(key_env):
-            available.append({"id": key, "name": display_name})
+    """Return available models from ai-builders API for the frontend dropdown."""
+    raw = fetch_ai_builders_models()
+    available = [
+        {"id": m["id"], "name": m.get("description", m["id"])}
+        for m in raw
+    ]
     if not available:
-        available = [{"id": "gpt-5", "name": "ChatGPT (gpt-5)"}]
+        available = [{"id": "gpt-5", "name": "GPT-5 (fallback)"}]
     return {"models": available}
 
 
@@ -141,9 +154,28 @@ def hello(name: str):
 @app.post("/chat")
 def chat(request: ChatRequest):
     chat_client, model_id = get_client_and_model(request.model)
-    messages = [{"role": "user", "content": request.user_message}]
+    prompt = request.user_message
+
+    # Image models: use images API
+    if model_id in IMAGE_MODEL_IDS:
+        try:
+            img_resp = chat_client.images.generate(prompt=prompt, model=model_id, n=1)
+            urls = []
+            for d in getattr(img_resp, "data", []) or []:
+                url = getattr(d, "url", None) or (d.get("url") if isinstance(d, dict) else None)
+                if url:
+                    urls.append(url)
+                b64 = getattr(d, "b64_json", None) or (d.get("b64_json") if isinstance(d, dict) else None)
+                if b64:
+                    urls.append(f"data:image/png;base64,{b64}")
+            return {"response": None, "images": urls}
+        except Exception as e:
+            return {"response": f"Image generation failed: {e}", "images": None}
+
+    # Text models: chat completions with tools
+    messages = [{"role": "user", "content": prompt}]
     max_turns = 3
-    
+    message = None
     for turn in range(max_turns):
         response = chat_client.chat.completions.create(
             model=model_id,
@@ -152,11 +184,11 @@ def chat(request: ChatRequest):
         )
         message = response.choices[0].message
         messages.append(message)
-        
+
         if not message.tool_calls:
             print(f"[Agent] Final Answer: {message.content}")
             break
-        
+
         for tool_call in message.tool_calls:
             print(f"[Agent] Decided to call tool: {tool_call.function.name}")
             if tool_call.function.name == "web_search":
@@ -171,12 +203,13 @@ def chat(request: ChatRequest):
             elif tool_call.function.name == "read_page":
                 args = json.loads(tool_call.function.arguments)
                 result = read_page(args["url"])
-                print(f"[System] Tool Output: {result[:500]}...")  # Truncate for logging
+                print(f"[System] Tool Output: {result[:500]}...")
                 messages.append({
                     "role": "tool",
                     "tool_call_id": tool_call.id,
                     "content": json.dumps(result)
                 })
-    
-    return {"response": message.content}
+
+    text = getattr(message, "content", None) if message else None
+    return {"response": text, "images": None}
 

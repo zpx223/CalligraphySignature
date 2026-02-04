@@ -80,6 +80,13 @@
         .message {
             margin-bottom: 10px;
         }
+        .message img {
+            max-width: 100%;
+            max-height: 400px;
+            border-radius: 8px;
+            margin-top: 6px;
+            display: block;
+        }
         .user {
             text-align: right;
         }
@@ -229,14 +236,26 @@
             const chat = chats.find(c => c.id === chatId);
             messagesDiv.innerHTML = '';
             chat.messages.forEach(msg => {
-                addMessage(msg.role, msg.content);
+                addMessage(msg.role, msg.content, msg.images);
             });
         }
 
-        function addMessage(role, content) {
+        function addMessage(role, content, images) {
             const div = document.createElement('div');
             div.className = `message ${role}`;
-            div.textContent = content;
+            if (content != null && content !== '') {
+                const text = document.createElement('span');
+                text.textContent = content;
+                div.appendChild(text);
+            }
+            if (images && images.length > 0) {
+                images.forEach(src => {
+                    const img = document.createElement('img');
+                    img.src = src;
+                    img.alt = 'Generated image';
+                    div.appendChild(img);
+                });
+            }
             messagesDiv.appendChild(div);
             messagesDiv.scrollTop = messagesDiv.scrollHeight;
         }
@@ -275,8 +294,9 @@
                     body: JSON.stringify({ user_message: message, model }),
                 });
                 const data = await response.json();
-                addMessage('assistant', data.response);
-                chat.messages.push({ role: 'assistant', content: data.response });
+                const images = data.images || [];
+                addMessage('assistant', data.response, images);
+                chat.messages.push({ role: 'assistant', content: data.response, images });
                 saveChats();
             } catch (error) {
                 addMessage('assistant', 'Error: ' + error.message);
