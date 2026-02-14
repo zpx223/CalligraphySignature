@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Chat</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,400&family=JetBrains+Mono:wght@400&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <div class="app">
+    <aside class="sidebar">
+      <div class="sidebar-header">
+        <h1>Chats</h1>
+        <button class="btn-new" id="newChat" title="New chat">+ New</button>
+      </div>
+      <ul class="chat-list" id="chatList"></ul>
+    </aside>
+    <main class="main">
+      <div class="chat-area" id="chatArea">
+        <div class="empty-state" id="emptyState">
+          <p>Start a conversation</p>
+          <p class="hint">Try: "Search for the latest release of Python, then read the changelog."</p>
+        </div>
+        <div class="messages" id="messages"></div>
+      </div>
+      <div class="input-area">
+        <div class="model-select-row">
+          <label for="modelSelect">Model</label>
+          <select id="modelSelect" title="Select LLM"></select>
+        </div>
+        <div class="input-wrapper">
+          <textarea id="userInput" placeholder="Type a message..." rows="1"></textarea>
+          <button class="btn-send" id="sendBtn" disabled title="Send">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/>
+            </svg>
+          </button>
+        </div>
+      </div>
+    </main>
+  </div>
+  <!-- Backend: OpenAPI at /openapi.json, Base URL: / -->
+  <script src="/static/app.js"></script>
+</body>
+</html>
